@@ -275,29 +275,6 @@
     }
 
     let lineUserId = "";
-    let lineGroupId = "";
-
-    try {
-      if (typeof liff !== "undefined" && liff.isLoggedIn()) {
-        const context = liff.getContext();
-
-        lineGroupId = context.groupId || "";
-
-        try {
-          const profile = await liff.getProfile();
-          lineUserId = profile.userId || "";
-        } catch (err) {
-          const idToken = liff.getDecodedIDToken();
-          lineUserId = idToken?.sub || "";
-        }
-
-        console.log("LIFF context =", context);
-        console.log("lineUserId =", lineUserId);
-        console.log("lineGroupId =", lineGroupId);
-      }
-    } catch (err) {
-      console.warn("取得 LIFF context 失敗：", err);
-    }
 
     const payload = {
       store,
@@ -307,8 +284,7 @@
       actual_cash_d: actualCashD,
       note,
       expenses,
-      line_user_id: lineUserId,
-      line_group_id: lineGroupId
+      line_user_id: lineUserId
     };
 
     const res = await fetch("/api/settlement/submit", {
