@@ -151,7 +151,7 @@
       <label for="foodpanda_a">foodpanda</label>
       <input type="number" id="foodpanda_a" min="0" inputmode="numeric" />
 
-      <label for="Ocard">Ocard</label>
+      <label for="ocard_a">Ocard</label>
       <input type="number" id="ocard_a" min="0" inputmode="numeric" />
 
       <div class="summary">
@@ -275,7 +275,15 @@
   }
 
   function calculate() {
-    const cashA = num(document.getElementById("cash_a").value);
+    const {
+      cashA,
+      linepayA,
+      ubereatsA,
+      foodpandaA,
+      ocardA,
+      totalRevenue
+    } = calculateRevenue();
+    //const cashA = num(document.getElementById("cash_a").value);
     const actualCashD = num(document.getElementById("actual_cash_d").value);
     const expenses = collectExpenses();
 
@@ -445,11 +453,12 @@
       const r = data.result;
       alert(
         `${r.store}｜${r.date}\n` +
-        `現金收入(A)：${r.cash_a}\n` +
-        `支出(B)：${r.expense_total_b}\n` +
-        `應收現金(C)：${r.should_cash_c}\n` +
-        `實際現金(D)：${r.actual_cash_d}\n` +
-        `溢短收(E)：${r.diff_e}\n` +
+        `今日營業額：${Number(r.revenue_a).toLocaleString()}\n` +
+        `現金收入(A)：${Number(r.cash_a).toLocaleString()}\n` +
+        `支出(B)：${Number(r.expense_total_b).toLocaleString()}\n` +
+        `應收現金(C)：${Number(r.should_cash_c).toLocaleString()}\n` +
+        `實際現金(D)：${Number(r.actual_cash_d).toLocaleString()}\n` +
+        `溢短收(E)：${Number(r.diff_e).toLocaleString()}\n` +
         `狀態：${r.status}\n` +
         `填表人：${r.operator_name}`
       );
@@ -469,6 +478,10 @@
     
 
   document.getElementById("cash_a").addEventListener("input", calculate);
+  document.getElementById("linepay_a").addEventListener("input", calculate);
+  document.getElementById("ubereats_a").addEventListener("input", calculate);
+  document.getElementById("foodpanda_a").addEventListener("input", calculate);
+  document.getElementById("ocard_a").addEventListener("input", calculate);
   document.getElementById("actual_cash_d").addEventListener("input", calculate);
 
   addExpenseRow();
