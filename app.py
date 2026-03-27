@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 import uuid
@@ -7,13 +10,17 @@ from datetime import datetime
 from typing import Any
 
 import gspread
-from flask import Flask, jsonify, render_template, request
+import requests
+from flask import Flask, abort, jsonify, render_template, request
 from google.oauth2.service_account import Credentials
 
 app = Flask(__name__)
 
 LIFF_ID = "2009616560-k85q2AlU"
-GOOGLE_SHEET_NAME = "蛋白每日結算系統"
+GOOGLE_SHEET_NAME = "便當店每日結算系統"
+
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "").strip()
 
 
 def to_int(value: Any, default: int = 0) -> int:
@@ -26,11 +33,6 @@ def to_int(value: Any, default: int = 0) -> int:
 
 
 def get_gspread_client():
-    """
-    兩種方式擇一：
-    1. 本機測試：用 credentials.json 檔案
-    2. Render：用環境變數 GOOGLE_SERVICE_ACCOUNT_JSON
-    """
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
@@ -83,6 +85,92 @@ def write_to_google_sheets(result: dict):
         ])
 
 
+def verify_line_signature(body: bytes, signature: str) -> bool:
+    if not LINE_CHANNEL_SECRET:
+        return False
+
+    hash_bytes = hmac.new(
+        LINE_CHANNEL_SECRET.encode("utf-8"),
+        body,
+        hashlib.sha256
+    ).digest()
+    expected_signature = base64.b64encode(hash_bytes).decode("utf-8")
+    return hmac.compare_digest(expected_signature, signature)
+
+
+def push_line_message(to: str, text: str):
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        raise ValueError("缺少 LINE_CHANNEL_ACCESS_TOKEN")
+
+    url = "https://api.line.me/v2/bot/message/push"
+    headers = {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "to": to,
+        "messages": [{"type": "text", "text": text}]
+    }
+
+    resp = requests.post(url, headers=headers, json=payload, timeout=15)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"LINE push 失敗：{resp.status_code} {resp.text}")
+
+
+def upsert_group_binding(store_name: str, group_id: str):
+    client = get_gspread_client()
+    spreadsheet = client.open(GOOGLE_SHEET_NAME)
+    ws = spreadsheet.worksheet("group_bindings")
+
+    values = ws.get_all_values()
+
+    # 第一列是標題，從第二列開始找
+    found_row = None
+    for idx, row in enumerate(values[1:], start=2):
+        if len(row) >= 1 and row[0].strip() == store_name:
+            found_row = idx
+            break
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if found_row:
+        ws.update(f"A{found_row}:C{found_row}", [[store_name, group_id, now_str]])
+    else:
+        ws.append_row([store_name, group_id, now_str])
+
+
+def get_group_id_by_store(store_name: str) -> str:
+    client = get_gspread_client()
+    spreadsheet = client.open(GOOGLE_SHEET_NAME)
+    ws = spreadsheet.worksheet("group_bindings")
+
+    values = ws.get_all_values()
+    for row in values[1:]:
+        if len(row) >= 2 and row[0].strip() == store_name:
+            return row[1].strip()
+    return ""
+
+
+def build_settlement_text(result: dict) -> str:
+    lines = [
+        f'{result["store"]}｜{result["date"]} 每日結算完成',
+        "",
+        f'營業額(A)：{result["revenue_a"]:,}',
+        f'支出(B)：{result["expense_total_b"]:,}',
+        f'實際現金(D)：{result["actual_cash_d"]:,}',
+        "",
+        f'應收現金(C)：{result["should_cash_c"]:,}',
+        f'溢短收(E)：{result["diff_e"]:,}',
+        f'狀態：{result["status"]}',
+    ]
+
+    if result["note"]:
+        lines.extend(["", f'備註：{result["note"]}'])
+
+    lines.extend(["", f'填表人：{result["operator_name"]}'])
+    return "\n".join(lines)
+
+
 @app.route("/")
 def home():
     return "LINE Settlement Bot is running."
@@ -91,6 +179,51 @@ def home():
 @app.route("/liff/settlement")
 def liff_settlement():
     return render_template("settlement.html", liff_id=LIFF_ID)
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    signature = request.headers.get("X-Line-Signature", "")
+    body = request.get_data()
+
+    if not verify_line_signature(body, signature):
+        abort(400, "Invalid signature")
+
+    payload = request.get_json(silent=True) or {}
+    events = payload.get("events", [])
+
+    for event in events:
+        event_type = event.get("type")
+        source = event.get("source", {})
+        source_type = source.get("type")
+        group_id = source.get("groupId", "")
+
+        # bot 被加入群組時
+        if event_type == "join" and source_type == "group" and group_id:
+            try:
+                push_line_message(group_id, "已加入群組。請輸入：綁定 后庄店 或 綁定 霧峰店")
+            except Exception:
+                pass
+
+        # 收群組文字訊息
+        if event_type == "message" and source_type == "group" and group_id:
+            message = event.get("message", {})
+            if message.get("type") != "text":
+                continue
+
+            text = (message.get("text") or "").strip()
+
+            if text.startswith("綁定 "):
+                store_name = text.replace("綁定 ", "", 1).strip()
+
+                if store_name not in ["后庄店", "霧峰店"]:
+                    push_line_message(group_id, "店名只能綁定：后庄店 或 霧峰店")
+                    continue
+
+                upsert_group_binding(store_name, group_id)
+                push_line_message(group_id, f"綁定完成：{store_name}")
+
+    return "OK", 200
 
 
 @app.route("/api/settlement/submit", methods=["POST"])
@@ -104,7 +237,6 @@ def submit_settlement():
     actual_cash_d = to_int(data.get("actual_cash_d"))
     note = (data.get("note") or "").strip()
     line_user_id = (data.get("line_user_id") or "").strip()
-    line_group_id = (data.get("line_group_id") or "").strip()
 
     expenses = data.get("expenses", [])
     expense_total_b = 0
@@ -127,6 +259,9 @@ def submit_settlement():
 
     settlement_id = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + uuid.uuid4().hex[:6]
 
+    # 不再依賴 LIFF 的 groupId，改由店別去查綁定表
+    line_group_id = get_group_id_by_store(store)
+
     result = {
         "id": settlement_id,
         "store": store,
@@ -146,6 +281,10 @@ def submit_settlement():
     }
 
     write_to_google_sheets(result)
+
+    if line_group_id:
+        message_text = build_settlement_text(result)
+        push_line_message(line_group_id, message_text)
 
     return jsonify({
         "ok": True,
