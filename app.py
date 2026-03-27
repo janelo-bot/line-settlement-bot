@@ -280,6 +280,11 @@ def submit_settlement():
     date = (data.get("date") or "").strip()
     frontend_operator_name = (data.get("operator_name") or "").strip()
     revenue_a = to_int(data.get("revenue_a"))
+    cash_a = to_int(data.get("cash_a"))
+    linepay_a = to_int(data.get("linepay_a"))
+    ubereats_a = to_int(data.get("ubereats_a"))
+    foodpanda_a = to_int(data.get("foodpanda_a"))
+    ocard_a = to_int(data.get("ocard_a"))
     actual_cash_d = to_int(data.get("actual_cash_d"))
     note = (data.get("note") or "").strip()
     id_token = (data.get("id_token") or "").strip()
@@ -349,7 +354,7 @@ def submit_settlement():
         })
         expense_total_b += amount
 
-    should_cash_c = revenue_a - expense_total_b
+    should_cash_c = cash_a - expense_total_b
     diff_e = actual_cash_d - should_cash_c
     status = "異常提醒" if abs(diff_e) > 100 else "正常"
 
@@ -364,6 +369,11 @@ def submit_settlement():
         "date": date,
         "operator_name": verified_user_name,
         "revenue_a": revenue_a,
+        "cash_a": cash_a,
+        "linepay_a": linepay_a,
+        "ubereats_a": ubereats_a,
+        "foodpanda_a": foodpanda_a,
+        "ocard_a": ocard_a,
         "expense_total_b": expense_total_b,
         "should_cash_c": should_cash_c,
         "actual_cash_d": actual_cash_d,
