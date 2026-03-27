@@ -274,6 +274,19 @@
       return;
     }
 
+    let lineUserId = "";
+    let lineGroupId = "";
+
+    try {
+      if (typeof liff !== "undefined" && liff.isLoggedIn()) {
+        const context = liff.getContext();
+        lineUserId = context.userId || "";
+        lineGroupId = context.groupId || "";
+      }
+    } catch (err) {
+      console.warn("取得 LIFF context 失敗：", err);
+    }
+
     const payload = {
       store,
       date,
@@ -281,7 +294,9 @@
       revenue_a: revenueA,
       actual_cash_d: actualCashD,
       note,
-      expenses
+      expenses,
+      line_user_id: lineUserId,
+      line_group_id: lineGroupId
     };
 
     const res = await fetch("/api/settlement/submit", {
