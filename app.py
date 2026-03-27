@@ -176,7 +176,8 @@ def build_settlement_text(result: dict) -> str:
     lines = [
         f'{result["store"]}｜{result["date"]} 每日結算完成',
         "",
-        f'營業額(A)：{result["revenue_a"]:,}',
+        f'今日營業額：{result["revenue_a"]:,}',
+        f'現金收入(A)：{result["cash_a"]:,}',
         f'支出(B)：{result["expense_total_b"]:,}',
         f'實際現金(D)：{result["actual_cash_d"]:,}',
         "",
@@ -251,23 +252,23 @@ def webhook():
                 ws = spreadsheet.worksheet("group_bindings")
                 values = ws.get_all_values()
 
-    for row in values[1:]:
-        if len(row) >= 2 and row[1].strip() == group_id:
-            bound_store = row[0].strip()
-            break
+                for row in values[1:]:
+                    if len(row) >= 2 and row[1].strip() == group_id:
+                        bound_store = row[0].strip()
+                        break
 
-        if not bound_store:
-            push_line_message(group_id, "此群組尚未綁定分店，請先輸入：綁定 后庄店 或 綁定 霧峰店")
-            continue
+                if not bound_store:
+                    push_line_message(group_id, "此群組尚未綁定分店，請先輸入：綁定 后庄店 或 綁定 霧峰店")
+                    continue
 
-    liff_url = f"https://liff.line.me/{LIFF_ID}?store={bound_store}"
-    push_line_message(
-        group_id,
-        "請點以下連結填寫每日結算：\n"
-        f"{liff_url}\n\n"
-        f"目前分店：{bound_store}\n"
-        "請務必從 LINE 群組內開啟，不要複製到外部瀏覽器。"
-    )
+                liff_url = f"https://liff.line.me/{LIFF_ID}?store={bound_store}"
+                push_line_message(
+                    group_id,
+                    "請點以下連結填寫每日結算：\n"
+                    f"{liff_url}\n\n"
+                    f"目前分店：{bound_store}\n"
+                    "請務必從 LINE 群組內開啟，不要複製到外部瀏覽器。"
+                )
 
     return "OK", 200
 
