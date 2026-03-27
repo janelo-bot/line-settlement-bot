@@ -21,6 +21,7 @@ GOOGLE_SHEET_NAME = "蛋白每日結算系統"
 
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "").strip()
+LINE_LOGIN_CHANNEL_ID = os.getenv("LINE_LOGIN_CHANNEL_ID", "").strip()
 
 
 def to_int(value: Any, default: int = 0) -> int:
@@ -48,6 +49,26 @@ def get_gspread_client():
 
     return gspread.authorize(creds)
 
+
+def verify_line_id_token(id_token: str) -> dict:
+    if not id_token:
+        return {}
+
+    if not LINE_LOGIN_CHANNEL_ID:
+        raise RuntimeError("缺少 LINE_LOGIN_CHANNEL_ID")
+
+    url = "https://api.line.me/oauth2/v2.1/verify"
+    data = {
+        "id_token": id_token,
+        "client_id": LINE_LOGIN_CHANNEL_ID,
+    }
+
+    resp = requests.post(url, data=data, timeout=15)
+    if resp.status_code != 200:
+        raise RuntimeError(f"驗證 ID Token 失敗：{resp.status_code} {resp.text}")
+
+    return resp.json()
+    
 
 def write_to_google_sheets(result: dict):
     client = get_gspread_client()
@@ -224,8 +245,29 @@ def webhook():
                 push_line_message(group_id, f"綁定完成：{store_name}")
                 
             elif text == "結算":
-                liff_url = "https://liff.line.me/2009616560-k85q2AlU"
-                push_line_message(group_id, f"請點以下連結填寫每日結算：\n{liff_url}")
+                bound_store = ""
+                client = get_gspread_client()
+                spreadsheet = client.open(GOOGLE_SHEET_NAME)
+                ws = spreadsheet.worksheet("group_bindings")
+                values = ws.get_all_values()
+
+    for row in values[1:]:
+        if len(row) >= 2 and row[1].strip() == group_id:
+            bound_store = row[0].strip()
+            break
+
+        if not bound_store:
+            push_line_message(group_id, "此群組尚未綁定分店，請先輸入：綁定 后庄店 或 綁定 霧峰店")
+            continue
+
+    liff_url = f"https://liff.line.me/{LIFF_ID}?store={bound_store}"
+    push_line_message(
+        group_id,
+        "請點以下連結填寫每日結算：\n"
+        f"{liff_url}\n\n"
+        f"目前分店：{bound_store}\n"
+        "請務必從 LINE 群組內開啟，不要複製到外部瀏覽器。"
+    )
 
     return "OK", 200
 
@@ -234,13 +276,63 @@ def webhook():
 def submit_settlement():
     data = request.get_json(silent=True) or {}
 
-    store = data.get("store", "")
-    date = data.get("date", "")
-    operator_name = data.get("operator_name", "")
+    store = (data.get("store") or "").strip()
+    date = (data.get("date") or "").strip()
+    frontend_operator_name = (data.get("operator_name") or "").strip()
     revenue_a = to_int(data.get("revenue_a"))
     actual_cash_d = to_int(data.get("actual_cash_d"))
     note = (data.get("note") or "").strip()
-    line_user_id = (data.get("line_user_id") or "").strip()
+    id_token = (data.get("id_token") or "").strip()
+
+    if store not in ["后庄店", "霧峰店"]:
+        return jsonify({
+            "ok": False,
+            "error": "分店資料錯誤"
+        }), 400
+
+    if not date:
+        return jsonify({
+            "ok": False,
+            "error": "缺少日期"
+        }), 400
+
+    if revenue_a <= 0:
+        return jsonify({
+            "ok": False,
+            "error": "營業額必須大於 0"
+        }), 400
+
+    if actual_cash_d < 0:
+        return jsonify({
+            "ok": False,
+            "error": "實際現金不可小於 0"
+        }), 400
+
+    if not id_token:
+        return jsonify({
+            "ok": False,
+            "error": "請從 LINE 群組內點擊「結算」開啟表單再送出"
+        }), 400
+
+    verified_user_id = ""
+    verified_user_name = frontend_operator_name
+
+    try:
+        token_info = verify_line_id_token(id_token)
+        verified_user_id = (token_info.get("sub") or "").strip()
+        verified_user_name = (token_info.get("name") or "").strip() or frontend_operator_name
+    except Exception as e:
+        print(f"ID Token 驗證失敗：{e}")
+        return jsonify({
+            "ok": False,
+            "error": "LINE 身分驗證失敗，請從 LINE 群組重新開啟表單"
+        }), 400
+
+    if not verified_user_id:
+        return jsonify({
+            "ok": False,
+            "error": "無法取得填表人身分，請從 LINE 群組重新開啟表單"
+        }), 400
 
     expenses = data.get("expenses", [])
     expense_total_b = 0
@@ -270,7 +362,7 @@ def submit_settlement():
         "id": settlement_id,
         "store": store,
         "date": date,
-        "operator_name": operator_name,
+        "operator_name": verified_user_name,
         "revenue_a": revenue_a,
         "expense_total_b": expense_total_b,
         "should_cash_c": should_cash_c,
@@ -279,16 +371,30 @@ def submit_settlement():
         "status": status,
         "note": note,
         "expenses": normalized_expenses,
-        "line_user_id": line_user_id,
+        "line_user_id": verified_user_id,
         "line_group_id": line_group_id,
         "submitted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
-    write_to_google_sheets(result)
+    try:
+        write_to_google_sheets(result)
+    except Exception as e:
+        print(f"寫入 Google Sheets 失敗：{e}")
+        return jsonify({
+            "ok": False,
+            "error": "寫入 Google Sheets 失敗"
+        }), 500
 
-    if line_group_id:
-        message_text = build_settlement_text(result)
-        push_line_message(line_group_id, message_text)
+    try:
+        if line_group_id:
+            message_text = build_settlement_text(result)
+            push_line_message(line_group_id, message_text)
+    except Exception as e:
+        print(f"LINE push 失敗：{e}")
+        return jsonify({
+            "ok": False,
+            "error": "已寫入資料，但回傳群組失敗"
+        }), 500
 
     return jsonify({
         "ok": True,
