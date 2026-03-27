@@ -276,7 +276,15 @@
       return;
     }
 
-    let lineUserId = "";
+    let idToken = "";
+
+    try {
+      if (typeof liff !== "undefined" && liff.isLoggedIn()) {
+        idToken = liff.getIDToken() || "";
+      }
+    } catch (err) {
+      console.warn("取得 ID Token 失敗：", err);
+    }
 
     const payload = {
       store,
@@ -286,7 +294,7 @@
       actual_cash_d: actualCashD,
       note,
       expenses,
-      line_user_id: lineUserId
+      id_token: idToken
     };
 
     try {
