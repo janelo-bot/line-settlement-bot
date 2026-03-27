@@ -146,7 +146,7 @@
     <div class="card">
       <h2>備註</h2>
       <textarea id="note" placeholder="可填今日特殊情況"></textarea>
-      <button type="button" class="btn-primary" onclick="submitForm()">送出</button>
+      <button type="button" class="btn-primary" id="submit-btn" onclick="submitForm()">送出</button>
     </div>
   </div>
 
@@ -253,6 +253,8 @@
   }
 
   async function submitForm() {
+    const submitBtn = document.getElementById("submit-btn");
+
     const store = document.getElementById("store").value;
     const date = document.getElementById("date").value;
     const operatorName = document.getElementById("operator_name").value.trim();
@@ -287,30 +289,42 @@
       line_user_id: lineUserId
     };
 
-    const res = await fetch("/api/settlement/submit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
+    try {
+      submitBtn.disabled = true;
+      submitBtn.innerText = "送出中，請稍候...";
 
-    const data = await res.json();
-    if (!data.ok) {
-      alert("送出失敗");
-      return;
+      const res = await fetch("/api/settlement/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      if (!data.ok) {
+        alert("送出失敗");
+        return;
+      }
+
+      const r = data.result;
+      alert(
+        `${r.store}｜${r.date}\n` +
+        `營業額(A)：${r.revenue_a}\n` +
+        `支出(B)：${r.expense_total_b}\n` +
+        `應收現金(C)：${r.should_cash_c}\n` +
+        `實際現金(D)：${r.actual_cash_d}\n` +
+        `溢短收(E)：${r.diff_e}\n` +
+        `狀態：${r.status}`
+      );
+    } catch (err) {
+      console.error(err);
+      alert("送出失敗，請稍後再試");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerText = "送出";
     }
-
-    const r = data.result;
-    alert(
-      `${r.store}｜${r.date}\n` +
-      `營業額(A)：${r.revenue_a}\n` +
-      `支出(B)：${r.expense_total_b}\n` +
-      `應收現金(C)：${r.should_cash_c}\n` +
-      `實際現金(D)：${r.actual_cash_d}\n` +
-      `溢短收(E)：${r.diff_e}\n` +
-      `狀態：${r.status}`
-    );
   }
 
   document.getElementById("revenue_a").addEventListener("input", calculate);
