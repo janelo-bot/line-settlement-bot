@@ -17,7 +17,7 @@ from google.oauth2.service_account import Credentials
 app = Flask(__name__)
 
 LIFF_ID = "2009616560-k85q2AlU"
-GOOGLE_SHEET_NAME = "便當店每日結算系統"
+GOOGLE_SHEET_NAME = "蛋白每日結算系統"
 
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "").strip()
