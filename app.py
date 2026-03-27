@@ -222,6 +222,10 @@ def webhook():
 
                 upsert_group_binding(store_name, group_id)
                 push_line_message(group_id, f"綁定完成：{store_name}")
+                
+            elif text == "結算":
+                liff_url = "https://liff.line.me/2009616560-k85q2AlU"
+                push_line_message(group_id, f"請點以下連結填寫每日結算：\n{liff_url}")
 
     return "OK", 200
 
