@@ -401,6 +401,11 @@
         `狀態：${r.status}\n` +
         `填表人：${r.operator_name}`
       );
+
+      if (liff.isInClient()) {
+        liff.closeWindow();
+      }
+
     } catch (err) {
       console.error(err);
       alert("送出失敗，請稍後再試");
@@ -409,6 +414,7 @@
       submitBtn.innerText = "送出";
     }
   }
+    
 
   document.getElementById("revenue_a").addEventListener("input", calculate);
   document.getElementById("actual_cash_d").addEventListener("input", calculate);
