@@ -139,8 +139,24 @@
 
     <div class="card">
       <h2>收入</h2>
-      <label for="revenue_a">營業額 A</label>
-      <input type="number" id="revenue_a" min="0" inputmode="numeric" required />
+      <label for="cash_a">現金 A</label>
+      <input type="number" id="cash_a" min="0" inputmode="numeric" required />
+
+      <label for="linepay_a">LinePay A</label>
+      <input type="number" id="linepay_a" min="0" inputmode="numeric" />
+
+      <label for="ubereats_a">UberEats A</label>
+      <input type="number" id="ubereats_a" min="0" inputmode="numeric" />
+
+      <label for="foodpanda_a">foodpanda A</label>
+      <input type="number" id="foodpanda_a" min="0" inputmode="numeric" />
+
+      <label for="Ocard">Ocard A</label>
+      <input type="number" id="ocard_a" min="0" inputmode="numeric" />
+
+      <div class="summary">
+        <div>今日營業額：<strong id="total_revenue">0</strong></div>
+      </div>
     </div>
 
     <div class="card">
@@ -187,6 +203,28 @@
   function num(v) {
     const cleaned = String(v || "").replace(/,/g, "").trim();
     return cleaned === "" ? 0 : Number(cleaned);
+  }
+
+  function calculateRevenue() {
+    const cashA = num(document.getElementById("cash_a").value);
+    const linepayA = num(document.getElementById("linepay_a").value);
+    const ubereatsA = num(document.getElementById("ubereats_a").value);
+    const foodpandaA = num(document.getElementById("foodpanda_a").value);
+    const ocardA = num(document.getElementById("ocard_a").value);
+
+    const totalRevenue = cashA + linepayA + ubereatsA + foodpandaA + ocardA;
+
+    document.getElementById("total_revenue").innerText =
+      totalRevenue.toLocaleString();
+
+    return {
+      cashA,
+      linepayA,
+      ubereatsA,
+      foodpandaA,
+      ocardA,
+      totalRevenue
+    };
   }
 
   function getQueryParam(name) {
@@ -237,12 +275,12 @@
   }
 
   function calculate() {
-    const revenueA = num(document.getElementById("revenue_a").value);
+    const cashA = num(document.getElementById("cash_a").value);
     const actualCashD = num(document.getElementById("actual_cash_d").value);
     const expenses = collectExpenses();
 
     const expenseTotalB = expenses.reduce((sum, item) => sum + num(item.amount), 0);
-    const shouldCashC = revenueA - expenseTotalB;
+    const shouldCashC = cashA - expenseTotalB;
     const diffE = actualCashD - shouldCashC;
 
     document.getElementById("expense_total_b").innerText = expenseTotalB.toLocaleString();
@@ -300,7 +338,16 @@
     const store = document.getElementById("store").value;
     const date = document.getElementById("date").value;
     const operatorName = document.getElementById("operator_name").value.trim();
-    const revenueA = num(document.getElementById("revenue_a").value);
+    const {
+      cashA,
+      linepayA,
+      ubereatsA,
+      foodpandaA,
+      ocardA,
+      totalRevenue
+    } = calculateRevenue();
+
+    const revenueA = totalRevenue;
     const actualCashD = num(document.getElementById("actual_cash_d").value);
     const note = document.getElementById("note").value.trim();
     const expenses = collectExpenses();
@@ -320,8 +367,8 @@
       return;
     }
 
-    if (document.getElementById("revenue_a").value.trim() === "") {
-      alert("請輸入營業額 A");
+    if (document.getElementById("cash_a").value.trim() === "") {
+      alert("請輸入現金收入");
       return;
     }
 
@@ -330,8 +377,8 @@
       return;
     }
 
-    if (revenueA < 0) {
-      alert("營業額 A 不可小於 0");
+    if (cashA < 0) {
+      alert("現金 A 不可小於 0");
       return;
     }
 
@@ -360,6 +407,11 @@
       date,
       operator_name: operatorName,
       revenue_a: revenueA,
+      cash_a: cashA,
+      linepay_a: linepayA,
+      ubereats_a: ubereatsA,
+      foodpanda_a: foodpandaA,
+      ocard_a: ocardA,
       actual_cash_d: actualCashD,
       note,
       expenses,
@@ -393,7 +445,7 @@
       const r = data.result;
       alert(
         `${r.store}｜${r.date}\n` +
-        `營業額(A)：${r.revenue_a}\n` +
+        `現金收入(A)：${r.cash_a}\n` +
         `支出(B)：${r.expense_total_b}\n` +
         `應收現金(C)：${r.should_cash_c}\n` +
         `實際現金(D)：${r.actual_cash_d}\n` +
@@ -416,7 +468,7 @@
   }
     
 
-  document.getElementById("revenue_a").addEventListener("input", calculate);
+  document.getElementById("cash_a").addEventListener("input", calculate);
   document.getElementById("actual_cash_d").addEventListener("input", calculate);
 
   addExpenseRow();
