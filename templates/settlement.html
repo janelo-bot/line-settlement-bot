@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -91,34 +92,55 @@
       border: none;
       font-weight: 700;
     }
+    /* 移除 number input 的上下箭頭 */
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    input[type="number"] {
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    /* 給動態支出金額欄位用 */
+    .no-spinner {
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    .no-spinner::-webkit-outer-spin-button,
+    .no-spinner::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <div class="card">
       <h1>每日結算表</h1>
-      <div class="muted">后庄店 / 霧峰店 共用版</div>
+      <div class="muted">26.327.0版</div>
     </div>
 
     <div class="card">
       <h2>基本資料</h2>
-      <label for="store">分店</label>
-      <select id="store">
-        <option value="后庄店">后庄店</option>
-        <option value="霧峰店">霧峰店</option>
-      </select>
-
+      <label for="store_display">分店</label>
+      <input type="text" id="store_display" readonly required/>
+      <input type="hidden" id="store" />
+      
       <label for="date">日期</label>
-      <input type="date" id="date" />
+      <input type="date" id="date" required/>
 
       <label for="operator_name">填表人</label>
-      <input type="text" id="operator_name" readonly />
+      <input type="text" id="operator_name" readonly required />
     </div>
 
     <div class="card">
       <h2>收入</h2>
       <label for="revenue_a">營業額 A</label>
-      <input type="number" id="revenue_a" min="0" value="0" />
+      <input type="number" id="revenue_a" min="0" inputmode="numeric" required />
     </div>
 
     <div class="card">
@@ -134,7 +156,7 @@
     <div class="card">
       <h2>現金對帳</h2>
       <label for="actual_cash_d">實際現金 D</label>
-      <input type="number" id="actual_cash_d" min="0" value="0" />
+      <input type="number" id="actual_cash_d" min="0" inputmode="numeric" required />
 
       <div class="summary">
         <div>應收現金 C = A - B：<strong id="should_cash_c">0</strong></div>
@@ -152,6 +174,7 @@
 
 <script>
   const liffId = "{{ liff_id }}";
+  const LIFF_URL = `https://liff.line.me/${liffId}`;
 
   function todayStr() {
     const now = new Date();
@@ -162,7 +185,13 @@
   }
 
   function num(v) {
-    return Number(v || 0);
+    const cleaned = String(v || "").replace(/,/g, "").trim();
+    return cleaned === "" ? 0 : Number(cleaned);
+  }
+
+  function getQueryParam(name) {
+    const url = new URL(window.location.href);
+    return url.searchParams.get(name) || "";
   }
 
   function addExpenseRow(name = "", amount = "") {
@@ -177,7 +206,7 @@
         </div>
         <div>
           <label>金額</label>
-          <input type="number" class="expense-amount" min="0" value="${amount}">
+          <input type="text" class="expense-amount no-spinner" inputmode="numeric" value="${amount}">
         </div>
       </div>
       <button type="button" class="btn-secondary remove-btn">刪除此筆</button>
@@ -231,26 +260,39 @@
   }
 
   async function initLiff() {
-    document.getElementById("date").value = todayStr();
+  document.getElementById("date").value = todayStr();
 
-    try {
-      await liff.init({ liffId });
+  try {
+    await liff.init({ liffId });
 
-      if (liff.isInClient()) {
-        if (liff.isLoggedIn()) {
-          const profile = await liff.getProfile();
-          document.getElementById("operator_name").value = profile.displayName || "LINE使用者";
-        } else {
-          document.getElementById("operator_name").value = "本機測試";
-        }
-      } else {
-        document.getElementById("operator_name").value = "本機測試";
-      }
-    } catch (err) {
-      console.warn("LIFF 初始化失敗，改用本機測試模式：", err);
-      document.getElementById("operator_name").value = "本機測試";
+    if (!liff.isLoggedIn()) {
+      liff.login({ redirectUri: window.location.href });
+      return;
     }
+
+    if (!liff.isInClient()) {
+      alert("請從 LINE 群組內點擊「結算」開啟表單，不要直接用瀏覽器開啟。");
+      window.location.href = LIFF_URL;
+      return;
+    }
+
+    const profile = await liff.getProfile();
+    document.getElementById("operator_name").value = profile.displayName || "";
+
+    const storeFromQuery = getQueryParam("store").trim();
+
+    if (!storeFromQuery || !["后庄店", "霧峰店"].includes(storeFromQuery)) {
+      alert("無法判定分店，請回到 LINE 群組重新點擊「結算」。");
+      return;
+    }
+
+    document.getElementById("store").value = storeFromQuery;
+    document.getElementById("store_display").value = storeFromQuery;
+  } catch (err) {
+    console.error("LIFF 初始化失敗：", err);
+    alert("表單初始化失敗，請回到 LINE 群組重新點擊「結算」再開啟。");
   }
+}
 
   async function submitForm() {
     const submitBtn = document.getElementById("submit-btn");
@@ -263,16 +305,38 @@
     const note = document.getElementById("note").value.trim();
     const expenses = collectExpenses();
 
+    if (!store) {
+      alert("無法判定分店，請從正確的 LINE 群組重新開啟表單。");
+      return;
+    }
+
     if (!date) {
       alert("請選擇日期");
       return;
     }
-    if (revenueA <= 0) {
+
+    if (!operatorName) {
+      alert("無法取得填表人資訊，請從 LINE 群組重新輸入「結算」開啟表單。");
+      return;
+    }
+
+    if (document.getElementById("revenue_a").value.trim() === "") {
       alert("請輸入營業額 A");
       return;
     }
-    if (actualCashD < 0) {
+
+    if (document.getElementById("actual_cash_d").value.trim() === "") {
       alert("請輸入實際現金 D");
+      return;
+    }
+
+    if (revenueA < 0) {
+      alert("營業額 A 不可小於 0");
+      return;
+    }
+
+    if (actualCashD < 0) {
+      alert("實際現金 D 不可小於 0");
       return;
     }
 
@@ -284,6 +348,11 @@
       }
     } catch (err) {
       console.warn("取得 ID Token 失敗：", err);
+    }
+
+    if (!idToken) {
+      alert("請務必從 LINE 群組內開啟表單後再送出。");
+      return;
     }
 
     const payload = {
@@ -309,10 +378,15 @@
         body: JSON.stringify(payload)
       });
 
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (err) {
+        throw new Error("伺服器回傳格式錯誤");
+      }
 
-      if (!data.ok) {
-        alert("送出失敗");
+      if (!res.ok || !data.ok) {
+        alert(data.error || "送出失敗，請稍後再試");
         return;
       }
 
@@ -324,7 +398,8 @@
         `應收現金(C)：${r.should_cash_c}\n` +
         `實際現金(D)：${r.actual_cash_d}\n` +
         `溢短收(E)：${r.diff_e}\n` +
-        `狀態：${r.status}`
+        `狀態：${r.status}\n` +
+        `填表人：${r.operator_name}`
       );
     } catch (err) {
       console.error(err);
