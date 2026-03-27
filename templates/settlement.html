@@ -280,8 +280,20 @@
     try {
       if (typeof liff !== "undefined" && liff.isLoggedIn()) {
         const context = liff.getContext();
-        lineUserId = context.userId || "";
+
         lineGroupId = context.groupId || "";
+
+        try {
+          const profile = await liff.getProfile();
+          lineUserId = profile.userId || "";
+        } catch (err) {
+          const idToken = liff.getDecodedIDToken();
+          lineUserId = idToken?.sub || "";
+        }
+
+        console.log("LIFF context =", context);
+        console.log("lineUserId =", lineUserId);
+        console.log("lineGroupId =", lineGroupId);
       }
     } catch (err) {
       console.warn("取得 LIFF context 失敗：", err);
