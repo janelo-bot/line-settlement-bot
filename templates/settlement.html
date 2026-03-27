@@ -250,7 +250,7 @@
     document.getElementById("diff_e").innerText = diffE.toLocaleString();
 
     const statusEl = document.getElementById("status_text");
-    if (Math.abs(diffE) > 300) {
+    if (Math.abs(diffE) > 100) {
       statusEl.innerText = "異常提醒";
       statusEl.className = "danger";
     } else {
