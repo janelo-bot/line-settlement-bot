@@ -70,6 +70,26 @@ def verify_line_id_token(id_token: str) -> dict:
     return resp.json()
     
 
+def settlement_exists(store: str, date: str) -> bool:
+    client = get_gspread_client()
+    spreadsheet = client.open(GOOGLE_SHEET_NAME)
+    ws = spreadsheet.worksheet("daily_settlement")
+
+    values = ws.get_all_values()
+    if not values:
+        return False
+
+    # 假設欄位順序：
+    # id, date, store, operator_name, ...
+    for row in values[1:]:
+        row_date = row[1].strip() if len(row) > 1 else ""
+        row_store = row[2].strip() if len(row) > 2 else ""
+        if row_date == date and row_store == store:
+            return True
+
+    return False
+
+
 def write_to_google_sheets(result: dict):
     client = get_gspread_client()
     spreadsheet = client.open(GOOGLE_SHEET_NAME)
@@ -306,7 +326,13 @@ def submit_settlement():
             "ok": False,
             "error": "缺少日期"
         }), 400
-
+    
+    if settlement_exists(store, date):
+        return jsonify({
+            "ok": False,
+            "error": f"{store} 在 {date} 已經送出過資料，不能重複送出"
+        }), 400
+        
     if revenue_a <= 0:
         return jsonify({
             "ok": False,
