@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import Any
 
 import gspread
@@ -23,7 +24,14 @@ LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "").strip()
 LINE_LOGIN_CHANNEL_ID = os.getenv("LINE_LOGIN_CHANNEL_ID", "").strip()
 
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
+def now_taipei():
+    return datetime.now(TAIPEI_TZ)
+
+def now_taipei_str():
+    return now_taipei().strftime("%Y-%m-%d %H:%M:%S")
+    
 def to_int(value: Any, default: int = 0) -> int:
     try:
         if value is None or value == "":
@@ -177,7 +185,7 @@ def upsert_group_binding(store_name: str, group_id: str):
             found_row = idx
             break
 
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = now_taipei_str()
 
     if found_row:
         ws.update(f"A{found_row}:C{found_row}", [[store_name, group_id, now_str]])
@@ -390,7 +398,7 @@ def submit_settlement():
     diff_e = actual_cash_d - should_cash_c
     status = "異常提醒" if abs(diff_e) > 100 else "正常"
 
-    settlement_id = datetime.now().strftime("%Y%m%d%H%M%S") + "-" + uuid.uuid4().hex[:6]
+    settlement_id = now_taipei().strftime("%Y%m%d%H%M%S") + "-" + uuid.uuid4().hex[:6]
 
     # 不再依賴 LIFF 的 groupId，改由店別去查綁定表
     line_group_id = get_group_id_by_store(store)
@@ -415,7 +423,7 @@ def submit_settlement():
         "expenses": normalized_expenses,
         "line_user_id": verified_user_id,
         "line_group_id": line_group_id,
-        "submitted_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "submitted_at": now_taipei_str(),
     }
 
     try:
