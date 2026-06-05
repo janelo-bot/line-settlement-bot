@@ -396,7 +396,7 @@ def submit_settlement():
 
     should_cash_c = cash_a - expense_total_b
     diff_e = actual_cash_d - should_cash_c
-    status = "異常提醒" if abs(diff_e) > 100 else "正常"
+    status = "異常提醒" if abs(diff_e) >= 50 else "正常"
 
     settlement_id = now_taipei().strftime("%Y%m%d%H%M%S") + "-" + uuid.uuid4().hex[:6]
 
